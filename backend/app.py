@@ -1,36 +1,58 @@
 import os
 import uuid
 import time
+import logging
 
-from flask import Flask, request, send_file, jsonify
+from flask import Flask, after_this_request, request, send_file, jsonify
 from flask_cors import CORS
 from downloader_service import AudioDownloader
 
-import yt_dlp
+#Configuração de logs: registra o horário, o nível do erro e a mensagem
+logging.basicConfig(level=logging.INFO, format='%(asctime)s -%(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 CORS(app)
 
 downloader = AudioDownloader(download_folder='downloads')
 
-@app.route('/convert', methods = ['POST'])
+@app.route('/api/convert', methods = ['POST'])
 def convert_video():
     data = request.json
     video_url = data.get('url')
 
     if not video_url:
+        logger.warning("Tentativa de conversão sem URL")
         return jsonify({'error': 'URL é obrigatória'}), 400
     
+    #Chama o serviço para realizar download e a conversão
     try:
         result = downloader.process_url(video_url)
+        file_path = result['path']
+
+        #Inicia a lógica de Auto-Limpeza
+        #Evita que o servidor não acumule arquivos
+        @after_this_request
+        def cleanup(response):
+            try:
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                    logger.info(f"Arquivo temporário removido do servidor: {file_path}")
+            except Exception as e:
+                logger.error(f"Falha ao deletar arquivo pós-processamento: {e}")
+            return response
+
+        #Retorna o arquivo MP3 para o navegador
         return send_file(
-            result['path'],
-            as_attachment=True,
-            download_name=result['title'],
-            mimetype='audio/mpeg'
-        )
+            file_path, 
+            as_attachment=True, 
+            download_name=result['display_name'], 
+            mimetype='audio/mpeg')
+
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
-    
+        #Registra o erro detalhado no log do servidor
+        logger.error(f"Erro ao processar requisição: {str(e)}")
+        return jsonify({'error': 'Falha interna ao converter áudio. Verifique o link.'}),
+
 if __name__ == '__main__':
-    app.run(host = '0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=False)
