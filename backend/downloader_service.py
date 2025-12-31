@@ -10,17 +10,24 @@ from pytubefix import YouTube
 logging.basicConfig(level=logging.INFO, format='%(asctime)s -%(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+#classe responsável por gerenciar o download do vídeo e em converter em MP3.
 class AudioDownloader:
+    #Inicia a classe, define a pasta e garante que ela exista.
     def __init__(self, download_folder: str ='downloads'):
         self.download_folder = os.path.abspath(download_folder)
         os.makedirs(self.download_foder, exist_ok=True)
 
+    #Limpa o título do vídeo para garantir que o nome do arquivo seja aceito
+    #pelo sistema operacional, removendo caracteres especiais.
     def _sanitize_title(self, title:str) -> str:
         return "".join([c for c in title if c.isalnum() or c in (' ', '-', '_')]).strip()
 
+    #Cria a conexão com o Youtube via Pytubefix
     def _get_youtube_instance(self, url:str) -> YouTube:
         return YouTube(url, use_oauth=True, allow_oauth_cache=True)
     
+    #Executa o FFmpegem um processo separado para converter o áudio base
+    #em um MP3 real de 192kbps
     def _convert_to_mp3(self, input_path: str, output_path: str) -> None:
         command = [
             'ffmpeg', '-y', input_path, 
